@@ -13,6 +13,7 @@ import usersRoutes from './routes/users.js';
 import wishlistRoutes from './routes/wishlist.js';
 import influencersRoutes from './routes/influencers.js';
 import recommendationsRoutes from './routes/recommendations.js';
+import searchRoutes from './routes/search.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -106,6 +107,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/influencers', influencersRoutes);
 app.use('/api/recommendations', recommendationsRoutes);
+app.use('/api/search', searchRoutes);
 
 // Error handling middleware (should be last)
 app.use(notFound);

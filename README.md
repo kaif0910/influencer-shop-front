@@ -53,6 +53,10 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Image Search (Visual Search like Google Lens)
+- AI Chat Assistant
+- Supabase Backend
+- Node.js API Server
 
 
 Yes, you can!

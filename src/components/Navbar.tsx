@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sheet";
 import ProfileButton from "./ProfileButton";
 import AIChatRoom from "./AIChatRoom";
+import ImageSearchButton from "./ImageSearchButton";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -71,6 +72,7 @@ const Navbar = () => {
           </div>
 
           <div className="hidden md:flex items-center space-x-6">
+            <ImageSearchButton />
             <Button
               variant="ghost"
               className="flex items-center gap-2"
@@ -105,6 +107,7 @@ const Navbar = () => {
             )}
           </div>
           <div className="md:hidden flex items-center space-x-3">
+            <ImageSearchButton />
             <button
               onClick={() => setIsSearchOpen(true)}
               className="p-2 rounded-full hover:bg-accent text-foreground"
