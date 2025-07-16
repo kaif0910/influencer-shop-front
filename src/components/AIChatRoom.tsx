@@ -2,15 +2,18 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageCircle, Send, Bot, User } from "lucide-react";
+import { MessageCircle, Send, Bot, User, Camera, X, Loader2 } from "lucide-react";
 import AITypingBubble from "./AITypingBubble";
 import { generateAIResponse } from "./aiChatUtils";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { toast } from "sonner";
+import { useRef } from "react";
 interface Message {
   id: string;
   text: string;
   sender: "user" | "ai";
   timestamp: Date;
+  image?: string;
 }
 interface AIChatRoomProps {
   isOpen: boolean;
@@ -28,21 +31,32 @@ const AIChatRoom = ({
   }]);
   const [inputMessage, setInputMessage] = useState("");
   const [isAITyping, setIsAITyping] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() && !selectedImage) return;
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: inputMessage,
+      text: inputMessage || (selectedImage ? "I've shared an image with you." : ""),
       sender: "user",
-      timestamp: new Date()
+      timestamp: new Date(),
+      image: selectedImage || undefined
     };
     setMessages(prev => [...prev, userMessage]);
     setInputMessage("");
+    setSelectedImage(null);
     setIsAITyping(true);
 
     // Simulate AI response
     setTimeout(() => {
-      const aiResponse = generateAIResponse(inputMessage);
+      let aiResponse;
+      if (userMessage.image) {
+        aiResponse = generateImageResponse(inputMessage);
+      } else {
+        aiResponse = generateAIResponse(inputMessage);
+      }
+      
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: aiResponse,
@@ -54,6 +68,39 @@ const AIChatRoom = ({
     }, 1200);
   };
   const handleKeyPress = (e: React.KeyboardEvent) => {
+  const generateImageResponse = (query: string) => {
+    const responses = [
+      "I can see the image you've shared! Based on what I'm looking at, I can help you find similar products on our platform. Would you like me to search for similar items?",
+      "Great image! I can see this looks like a fashion/lifestyle product. Let me help you find similar items or answer any questions about styling this piece.",
+      "Thanks for sharing the image! I can analyze the style, colors, and type of product. What specific information would you like about this item?",
+      "I can see the image clearly! This appears to be a great piece. Would you like recommendations for similar products, styling tips, or information about where to find this item?",
+      "Perfect! I can analyze this image for you. I can help with product identification, finding similar items, styling suggestions, or price comparisons. What would you like to know?"
+    ];
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image size should be less than 10MB");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    setIsAnalyzingImage(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setSelectedImage(e.target?.result as string);
+      setIsAnalyzingImage(false);
+      toast.success("Image uploaded! You can now ask questions about it.");
+    };
+    reader.readAsDataURL(file);
+  };
+    return responses[Math.floor(Math.random() * responses.length)];
+  };
     if (e.key === "Enter") {
       handleSendMessage();
     }
@@ -80,6 +127,15 @@ const AIChatRoom = ({
                       <MessageCircle className="h-5 w-5 text-brand-600" />
                     </div>}
                   <div className={`max-w-[280px] p-3 rounded-lg ${message.sender === "user" ? "bg-brand-600 text-white" : "bg-brand-200 text-brand-700"}`}>
+                    {message.image && (
+                      <div className="mb-2">
+                        <img 
+                          src={message.image} 
+                          alt="Shared image" 
+                          className="max-w-full h-32 object-cover rounded"
+                        />
+                      </div>
+                    )}
                     <p className="text-sm">{message.text}</p>
                     <span className="text-xs opacity-70 mt-1 block">
                       {message.timestamp.toLocaleTimeString([], {
@@ -96,7 +152,37 @@ const AIChatRoom = ({
             </div>
           </ScrollArea>
           <div className="border-t pt-4 mt-4">
+            {selectedImage && (
+              <div className="mb-3 relative inline-block">
+                <img 
+                  src={selectedImage} 
+                  alt="Selected" 
+                  className="max-w-32 h-20 object-cover rounded border"
+                />
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="absolute -top-2 -right-2 h-6 w-6 p-0"
+                  onClick={() => setSelectedImage(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isAnalyzingImage}
+                className="flex-shrink-0"
+              >
+                {isAnalyzingImage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
+              </Button>
               <Input placeholder="Ask about products, prices, recommendations..." value={inputMessage} onChange={e => setInputMessage(e.target.value)} onKeyPress={handleKeyPress} className="flex-1" />
               <Button onClick={handleSendMessage} size="sm">
                 <span className="sr-only">Send</span>
@@ -106,6 +192,13 @@ const AIChatRoom = ({
                 </svg>
               </Button>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
             <Button variant="ghost" size="sm" className="w-full mt-3 text-xs text-gray-500 hover:text-brand-600" onClick={() => setIsOpen(false)} aria-label="Close chat">
               Close Chat
             </Button>

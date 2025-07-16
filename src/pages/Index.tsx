@@ -11,7 +11,6 @@ import { ShoppingBag } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import React from "react";
 import AIChatFAB from "../components/AIChatFAB";
-import VisualSearchFAB from "../components/VisualSearchFAB";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -46,8 +45,6 @@ const Index = () => {
       <Footer />
       {/* Floating AI Chat Button */}
       <AIChatFAB />
-      {/* Floating Visual Search Button */}
-      <VisualSearchFAB />
     </div>
   );
 };
