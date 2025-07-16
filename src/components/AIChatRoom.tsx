@@ -35,6 +35,41 @@ const AIChatRoom = ({
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleSendMessage = () => {
+  const generateImageResponse = (query: string) => {
+    const responses = [
+      "I can see the image you've shared! Based on what I'm looking at, I can help you find similar products on our platform. Would you like me to search for similar items?",
+      "Great image! I can see this looks like a fashion/lifestyle product. Let me help you find similar items or answer any questions about styling this piece.",
+      "Thanks for sharing the image! I can analyze the style, colors, and type of product. What specific information would you like about this item?",
+      "I can see the image clearly! This appears to be a great piece. Would you like recommendations for similar products, styling tips, or information about where to find this item?",
+      "Perfect! I can analyze this image for you. I can help with product identification, finding similar items, styling suggestions, or price comparisons. What would you like to know?"
+    ];
+    return responses[Math.floor(Math.random() * responses.length)];
+  };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image size should be less than 10MB");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    setIsAnalyzingImage(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setSelectedImage(e.target?.result as string);
+      setIsAnalyzingImage(false);
+      toast.success("Image uploaded! You can now ask questions about it.");
+    };
+    reader.readAsDataURL(file);
+  };
+
     if (!inputMessage.trim() && !selectedImage) return;
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -68,39 +103,6 @@ const AIChatRoom = ({
     }, 1200);
   };
   const handleKeyPress = (e: React.KeyboardEvent) => {
-  const generateImageResponse = (query: string) => {
-    const responses = [
-      "I can see the image you've shared! Based on what I'm looking at, I can help you find similar products on our platform. Would you like me to search for similar items?",
-      "Great image! I can see this looks like a fashion/lifestyle product. Let me help you find similar items or answer any questions about styling this piece.",
-      "Thanks for sharing the image! I can analyze the style, colors, and type of product. What specific information would you like about this item?",
-      "I can see the image clearly! This appears to be a great piece. Would you like recommendations for similar products, styling tips, or information about where to find this item?",
-      "Perfect! I can analyze this image for you. I can help with product identification, finding similar items, styling suggestions, or price comparisons. What would you like to know?"
-    ];
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Image size should be less than 10MB");
-      return;
-    }
-
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
-      return;
-    }
-
-    setIsAnalyzingImage(true);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setSelectedImage(e.target?.result as string);
-      setIsAnalyzingImage(false);
-      toast.success("Image uploaded! You can now ask questions about it.");
-    };
-    reader.readAsDataURL(file);
-  };
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
     if (e.key === "Enter") {
       handleSendMessage();
     }
