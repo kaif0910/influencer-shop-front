@@ -2,15 +2,14 @@
 import { Button } from "@/components/ui/button";
 import { User, ShoppingBag, Link } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 
 const HowItWorks = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const handleJoinAsInfluencer = () => {
-    // Check if user is logged in
-    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-    
-    if (isLoggedIn) {
+    if (isAuthenticated) {
       // Redirect to influencer profile page
       navigate("/influencer-profile");
     } else {
@@ -20,10 +19,7 @@ const HowItWorks = () => {
   };
 
   const handleStartShopping = () => {
-    // Check if user is logged in
-    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-    
-    if (isLoggedIn) {
+    if (isAuthenticated) {
       // Redirect to personalized For You page
       navigate("/for-you");
     } else {

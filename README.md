@@ -2,17 +2,11 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/3ffb1d95-b824-4a2e-a699-34f151108102
+**URL**: https://funny-sprinkles-57505f.netlify.app
 
 ## How can I edit this code?
 
 There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/3ffb1d95-b824-4a2e-a699-34f151108102) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
 
 **Use your preferred IDE**
 
@@ -59,12 +53,11 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Image Search (Visual Search like Google Lens)
+- AI Chat Assistant
+- Supabase Backend
+- Node.js API Server
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/3ffb1d95-b824-4a2e-a699-34f151108102) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
 
 Yes, you can!
 

@@ -1,26 +1,11 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, ShoppingCart } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import {
-  Command,
   CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
 } from "@/components/ui/command";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import ProfileButton from "./ProfileButton";
-import AIChatRoom from "./AIChatRoom";
+import UnifiedSearchBar from "./UnifiedSearchBar";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -33,11 +18,20 @@ const Navbar = () => {
 
   // Add start shopping handler
   const handleStartShopping = () => {
-    if (isAuthenticated) {
-      navigate("/for-you");
-    } else {
+    // Prevent navigation if user is being logged out
+    if (!isAuthenticated) {
       navigate("/auth?intent=shopping");
+      return;
     }
+    
+    // Add a small delay to ensure auth state is stable
+    setTimeout(() => {
+      if (isAuthenticated) {
+        navigate("/for-you");
+      } else {
+        navigate("/auth?intent=shopping");
+      }
+    }, 100);
   };
 
   return (
@@ -54,20 +48,13 @@ const Navbar = () => {
           </div>
           
           <div className="hidden md:flex items-center space-x-6 flex-1 max-w-2xl mx-8">
-            <div className="flex items-center space-x-3 flex-1">
-              <div className="relative flex-1 max-w-xl">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <Input 
-                  placeholder="Search products, influencers..."
-                  className="pl-10 bg-muted text-foreground w-full"
-                  onClick={() => setIsSearchOpen(true)}
-                  readOnly
-                />
-              </div>
-              <AIChatRoom isOpen={isAIChatOpen} setIsOpen={setIsAIChatOpen} />
-            </div>
+            <Button
+              variant="outline"
+              className="flex-1 max-w-xl justify-start text-muted-foreground"
+              onClick={() => setIsSearchOpen(true)}
+            >
+              Search products, influencers...
+            </Button>
           </div>
 
           <div className="hidden md:flex items-center space-x-6">
@@ -107,9 +94,9 @@ const Navbar = () => {
           <div className="md:hidden flex items-center space-x-3">
             <button
               onClick={() => setIsSearchOpen(true)}
-              className="p-2 rounded-full hover:bg-accent text-foreground"
+              className="px-3 py-2 rounded-md border border-input bg-background hover:bg-accent text-muted-foreground text-sm"
             >
-              <Search className="h-5 w-5" />
+              Search...
             </button>
             {/* Mobile hamburger */}
             <button
@@ -131,20 +118,6 @@ const Navbar = () => {
       {isMenuOpen && (
         <div className="md:hidden">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-background shadow-lg border-t border-border">
-            <div className="px-3 py-2">
-              <div className="relative mb-3">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <Input 
-                  placeholder="Search products, influencers..." 
-                  className="pl-10 w-full bg-muted text-foreground"
-                  onClick={() => setIsSearchOpen(true)}
-                  readOnly
-                />
-              </div>
-              <AIChatRoom isOpen={isAIChatOpen} setIsOpen={setIsAIChatOpen} />
-            </div>
             <Button
               variant="ghost"
               className="w-full flex items-center gap-2"
@@ -204,60 +177,9 @@ const Navbar = () => {
 
       {/* Search dialog */}
       <CommandDialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-        <Command className="rounded-lg border shadow-md bg-background">
-          <CommandInput placeholder="Search products, influencers..." className="text-foreground" />
-          <CommandList className="bg-background">
-            <CommandEmpty className="text-muted-foreground">No results found.</CommandEmpty>
-            <CommandGroup heading="Products">
-              <CommandItem className="flex items-center gap-2 py-3 text-foreground hover:bg-accent">
-                <img 
-                  src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90oy1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1770&q=80" 
-                  alt="Headphones" 
-                  className="w-10 h-10 object-cover rounded"
-                />
-                <div>
-                  <p className="font-medium text-foreground">Wireless Noise-Cancelling Headphones</p>
-                  <p className="text-sm text-muted-foreground">₹20,699</p>
-                </div>
-              </CommandItem>
-              <CommandItem className="flex items-center gap-2 py-3 text-foreground hover:bg-accent">
-                <img 
-                  src="https://images.unsplash.com/photo-1611741385334-864f40e100b8?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90oy1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1770&q=80" 
-                  alt="Yoga Mat" 
-                  className="w-10 h-10 object-cover rounded"
-                />
-                <div>
-                  <p className="font-medium text-foreground">Premium Yoga Mat</p>
-                  <p className="text-sm text-muted-foreground">₹7,399</p>
-                </div>
-              </CommandItem>
-            </CommandGroup>
-            <CommandGroup heading="Influencers">
-              <CommandItem className="flex items-center gap-2 py-3 text-foreground hover:bg-accent">
-                <img 
-                  src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" 
-                  alt="Emma Johnson" 
-                  className="w-10 h-10 object-cover rounded-full"
-                />
-                <div>
-                  <p className="font-medium text-foreground">Emma Johnson</p>
-                  <p className="text-sm text-muted-foreground">Fashion & Style</p>
-                </div>
-              </CommandItem>
-              <CommandItem className="flex items-center gap-2 py-3 text-foreground hover:bg-accent">
-                <img 
-                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" 
-                  alt="Alex Rivera" 
-                  className="w-10 h-10 object-cover rounded-full"
-                />
-                <div>
-                  <p className="font-medium text-foreground">Alex Rivera</p>
-                  <p className="text-sm text-muted-foreground">Fitness & Wellness</p>
-                </div>
-              </CommandItem>
-            </CommandGroup>
-          </CommandList>
-        </Command>
+        <div className="rounded-lg border shadow-md bg-background p-6 max-w-2xl mx-auto">
+          <UnifiedSearchBar onClose={() => setIsSearchOpen(false)} />
+        </div>
       </CommandDialog>
     </nav>
   );
