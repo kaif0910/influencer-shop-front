@@ -138,24 +138,25 @@ const UnifiedSearchBar = ({
       {/* Search Input Area */}
       {searchMode === 'text' ? (
         <div className="relative">
-          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none z-10">
             <Search className="h-4 w-4 text-muted-foreground" />
           </div>
           <Input
             value={textQuery}
             onChange={(e) => setTextQuery(e.target.value)}
             placeholder={placeholder}
-            className="pl-10 pr-12"
+            className="pl-10 pr-20"
             onKeyPress={(e) => e.key === 'Enter' && handleTextSearch()}
           />
-          <Button
-            size="sm"
-            className="absolute right-1 top-1 h-8"
-            onClick={handleTextSearch}
-            disabled={!textQuery.trim()}
-          >
-            Search
-          </Button>
+          {textQuery.trim() && (
+            <Button
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3"
+              onClick={handleTextSearch}
+            >
+              Search
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
