@@ -53,22 +53,41 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   const isAuthenticated = !!user;
 
   // Check for existing session on mount
   useEffect(() => {
     const checkAuth = async () => {
+      if (sessionChecked) return;
+      
       try {
+        // First check if we have a stored session
+        const storedUser = localStorage.getItem('auth_user');
+        if (storedUser) {
+          try {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+          } catch (e) {
+            localStorage.removeItem('auth_user');
+          }
+        }
+        
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.access_token) {
           await fetchUserProfile(session.access_token);
+        } else if (!storedUser) {
+          // Only clear user if no stored user and no session
+          setUser(null);
         }
       } catch (error) {
         console.error('Auth check failed:', error);
+        // Don't clear user on network errors, keep existing state
       } finally {
         setIsLoading(false);
+        setSessionChecked(true);
       }
     };
 
@@ -76,16 +95,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state change:', event, !!session);
+      
       if (event === 'SIGNED_IN' && session?.access_token) {
         await fetchUserProfile(session.access_token);
       } else if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('auth_user');
         setUser(null);
+      } else if (event === 'TOKEN_REFRESHED' && session?.access_token) {
+        // Refresh user profile on token refresh
+        await fetchUserProfile(session.access_token);
       }
-      setIsLoading(false);
+      
+      if (sessionChecked) {
+        setIsLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [sessionChecked]);
 
   const fetchUserProfile = async (token: string) => {
     try {
@@ -101,14 +129,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (error) {
           console.error('Failed to fetch user profile:', error);
-          setUser(null);
+          // Don't clear user on profile fetch error, keep existing state
+          if (!user) {
+            setUser(null);
+          }
         } else {
+          // Store user in localStorage for persistence
+          localStorage.setItem('auth_user', JSON.stringify(profile));
           setUser(profile);
         }
       }
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
-      setUser(null);
+      // Don't clear user on network errors
     }
   };
 
@@ -133,6 +166,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Set user profile regardless of session status
       if (response.user) {
+        localStorage.setItem('auth_user', JSON.stringify(response.user));
         setUser(response.user);
       }
 
@@ -167,6 +201,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Set user profile regardless of session status
       if (response.user) {
+        localStorage.setItem('auth_user', JSON.stringify(response.user));
         setUser(response.user);
       }
 
@@ -193,11 +228,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       
       // Clear user state regardless
+      localStorage.removeItem('auth_user');
       setUser(null);
       toast.success('Logged out successfully');
     } catch (error: any) {
       console.error('Logout error:', error);
       // Still clear user state even if logout fails
+      localStorage.removeItem('auth_user');
       setUser(null);
       toast.success('Logged out');
     }
@@ -222,6 +259,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error('Failed to update profile');
       }
 
+      // Update localStorage with new user data
+      localStorage.setItem('auth_user', JSON.stringify(updatedProfile));
       setUser(updatedProfile);
       toast.success('Profile updated successfully!');
     } catch (error: any) {
@@ -236,9 +275,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.access_token) {
         await fetchUserProfile(session.access_token);
+      } else {
+        // If no session but we have stored user, keep the stored user
+        const storedUser = localStorage.getItem('auth_user');
+        if (storedUser && !user) {
+          try {
+            setUser(JSON.parse(storedUser));
+          } catch (e) {
+            localStorage.removeItem('auth_user');
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to refresh user:', error);
+      // Don't clear user on refresh errors
     }
   };
 

@@ -18,11 +18,20 @@ const Navbar = () => {
 
   // Add start shopping handler
   const handleStartShopping = () => {
-    if (isAuthenticated) {
-      navigate("/for-you");
-    } else {
+    // Prevent navigation if user is being logged out
+    if (!isAuthenticated) {
       navigate("/auth?intent=shopping");
+      return;
     }
+    
+    // Add a small delay to ensure auth state is stable
+    setTimeout(() => {
+      if (isAuthenticated) {
+        navigate("/for-you");
+      } else {
+        navigate("/auth?intent=shopping");
+      }
+    }, 100);
   };
 
   return (

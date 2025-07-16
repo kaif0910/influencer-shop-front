@@ -2,13 +2,14 @@
 import { Button } from "@/components/ui/button";
 import { ShoppingBag, UserPlus, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 
 const Hero = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const handleJoinAsInfluencer = () => {
-    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-    if (isLoggedIn) {
+    if (isAuthenticated) {
       navigate("/influencer-profile");
     } else {
       navigate("/auth?intent=influencer");
@@ -16,8 +17,7 @@ const Hero = () => {
   };
 
   const handleStartShopping = () => {
-    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-    if (isLoggedIn) {
+    if (isAuthenticated) {
       navigate("/for-you");
     } else {
       navigate("/auth?intent=shopping");
