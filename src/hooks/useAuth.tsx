@@ -186,6 +186,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Use backend API for login
       const response = await apiClient.login({ email, password });
+      console.log('Login response:', response);
+
+      if (!response || (!response.user && !response.session)) {
+        toast.error('Login failed: No user or session returned');
+        setUser(null);
+        localStorage.removeItem('auth_user');
+        return;
+      }
 
       // Try to set the session in Supabase client if available
       if (response.session) {
@@ -203,12 +211,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (response.user) {
         localStorage.setItem('auth_user', JSON.stringify(response.user));
         setUser(response.user);
+        toast.success('Logged in successfully!');
+      } else {
+        toast.error('Login failed: No user returned');
+        setUser(null);
+        localStorage.removeItem('auth_user');
       }
-
-      toast.success('Logged in successfully!');
     } catch (error: any) {
       console.error('Login error:', error);
       toast.error(error.message || 'Login failed');
+      setUser(null);
+      localStorage.removeItem('auth_user');
       throw error;
     } finally {
       setIsLoading(false);
@@ -217,26 +230,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     try {
+      console.log('Logout: starting');
       // Try to sign out from Supabase
+      console.log('Logout: before supabase.auth.signOut');
+      let signOutResult = null;
       try {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-          console.warn('Supabase logout failed:', error);
+        signOutResult = await supabase.auth.signOut();
+        console.log('Logout: after supabase.auth.signOut', signOutResult);
+        if (signOutResult && signOutResult.error) {
+          console.warn('Supabase logout failed:', signOutResult.error);
+        } else {
+          console.log('Supabase signOut succeeded');
         }
       } catch (error) {
-        console.warn('Supabase logout failed:', error);
+        console.warn('Supabase logout threw error:', error);
       }
-      
-      // Clear user state regardless
+
+      // Clear all user-related state and storage
       localStorage.removeItem('auth_user');
       setUser(null);
+      localStorage.removeItem('supabase.auth.token');
+      sessionStorage.clear();
+      console.log('Logout: cleared localStorage, setUser(null)');
+
       toast.success('Logged out successfully');
+
+      // Force reload to ensure all state is reset
+      setTimeout(() => {
+        console.log('Logout: reloading page');
+        window.location.reload();
+      }, 500);
     } catch (error: any) {
       console.error('Logout error:', error);
       // Still clear user state even if logout fails
       localStorage.removeItem('auth_user');
       setUser(null);
       toast.success('Logged out');
+      setTimeout(() => {
+        console.log('Logout: reloading page after error');
+        window.location.reload();
+      }, 500);
     }
   };
 
