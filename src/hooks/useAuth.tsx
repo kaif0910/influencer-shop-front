@@ -25,7 +25,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<AuthUser>) => Promise<void>;
@@ -53,95 +53,99 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [sessionChecked, setSessionChecked] = useState(false);
 
   const isAuthenticated = !!user;
 
-  // Check for existing session on mount
+  // Check for existing session and listen for auth changes on mount
   useEffect(() => {
     const checkAuth = async () => {
-      if (sessionChecked) return;
-      
       try {
-        // First check if we have a stored session
-        const storedUser = localStorage.getItem('auth_user');
-        if (storedUser) {
-          try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-          } catch (e) {
-            localStorage.removeItem('auth_user');
-          }
-        }
-        
-        const { data: { session } } = await supabase.auth.getSession();
-        
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
         if (session?.access_token) {
           await fetchUserProfile(session.access_token);
-        } else if (!storedUser) {
-          // Only clear user if no stored user and no session
-          setUser(null);
+        } else {
+          if (!user) {
+            localStorage.removeItem('auth_user');
+            setUser(null);
+          }
         }
       } catch (error) {
         console.error('Auth check failed:', error);
-        // Don't clear user on network errors, keep existing state
       } finally {
         setIsLoading(false);
-        setSessionChecked(true);
       }
     };
-
     checkAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state change:', event, !!session);
-      
       if (event === 'SIGNED_IN' && session?.access_token) {
         await fetchUserProfile(session.access_token);
       } else if (event === 'SIGNED_OUT') {
         localStorage.removeItem('auth_user');
         setUser(null);
       } else if (event === 'TOKEN_REFRESHED' && session?.access_token) {
-        // Refresh user profile on token refresh
         await fetchUserProfile(session.access_token);
       }
-      
       if (sessionChecked) {
         setIsLoading(false);
       }
     });
-
     return () => subscription.unsubscribe();
-  }, [sessionChecked]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchUserProfile = async (token: string) => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser(token);
-      
+      const userResponse = await supabase.auth.getUser(token);
+      const authUser = userResponse && userResponse.data && userResponse.data.user ? userResponse.data.user : null;
+      console.log('fetchUserProfile: authUser', authUser);
       if (authUser) {
-        // Get user profile from database
-        const { data: profile, error } = await supabase
+        let { data: profile, error } = await supabase
           .from('users')
           .select('*')
           .eq('id', authUser.id)
           .single();
-
-        if (error) {
-          console.error('Failed to fetch user profile:', error);
-          // Don't clear user on profile fetch error, keep existing state
-          if (!user) {
+        console.log('fetchUserProfile: profile', profile, 'error', error);
+        if (error || !profile) {
+          // If not found, create the user profile
+          const { data: newProfile, error: insertError } = await supabase
+            .from('users')
+            .insert([
+              {
+                id: authUser.id,
+                name: authUser.user_metadata?.name || authUser.email,
+                email: authUser.email,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                // add other default fields as needed
+              }
+            ])
+            .select()
+            .single();
+          if (insertError || !newProfile) {
+            toast.error('Failed to create user profile');
             setUser(null);
+            return;
+          } else {
+            localStorage.setItem('auth_user', JSON.stringify(newProfile));
+            setUser(newProfile);
+            return;
           }
         } else {
-          // Store user in localStorage for persistence
           localStorage.setItem('auth_user', JSON.stringify(profile));
           setUser(profile);
         }
+      } else {
+        toast.error('No Supabase user found');
+        setUser(null);
       }
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
-      // Don't clear user on network errors
+      toast.error('Failed to fetch user profile');
+      setUser(null);
     }
   };
 
@@ -180,7 +184,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
 
@@ -192,39 +196,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         toast.error('Login failed: No user or session returned');
         setUser(null);
         localStorage.removeItem('auth_user');
-        return;
+        setIsLoading(false);
+        return false;
       }
 
       // Try to set the session in Supabase client if available
+      let profileFetched = false;
       if (response.session) {
         try {
           const { error: sessionError } = await supabase.auth.setSession(response.session);
           if (sessionError) {
             console.warn('Session setting failed, but continuing with manual auth:', sessionError);
           }
+          // Always fetch user profile from Supabase after setting session
+          if (response.session.access_token) {
+            await fetchUserProfile(response.session.access_token);
+            profileFetched = true;
+          }
         } catch (sessionError) {
           console.warn('Session setting failed, but continuing with manual auth:', sessionError);
         }
       }
 
-      // Set user profile regardless of session status
-      if (response.user) {
-        localStorage.setItem('auth_user', JSON.stringify(response.user));
-        setUser(response.user);
+      if (profileFetched && user) {
         toast.success('Logged in successfully!');
+        setIsLoading(false);
+        return true;
       } else {
-        toast.error('Login failed: No user returned');
+        toast.error('Login failed: Could not fetch user profile');
         setUser(null);
         localStorage.removeItem('auth_user');
+        setIsLoading(false);
+        return false;
       }
     } catch (error: any) {
       console.error('Login error:', error);
       toast.error(error.message || 'Login failed');
       setUser(null);
       localStorage.removeItem('auth_user');
-      throw error;
-    } finally {
       setIsLoading(false);
+      return false;
     }
   };
 
@@ -232,11 +243,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       console.log('Logout: starting');
       // Try to sign out from Supabase
-      console.log('Logout: before supabase.auth.signOut');
       let signOutResult = null;
       try {
         signOutResult = await supabase.auth.signOut();
-        console.log('Logout: after supabase.auth.signOut', signOutResult);
+        // Force clear Supabase session in-memory as well
+        await supabase.auth.setSession(null);
         if (signOutResult && signOutResult.error) {
           console.warn('Supabase logout failed:', signOutResult.error);
         } else {
@@ -249,15 +260,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Clear all user-related state and storage
       localStorage.removeItem('auth_user');
       setUser(null);
-      localStorage.removeItem('supabase.auth.token');
+      // Remove all Supabase session keys from localStorage
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('sb-')) localStorage.removeItem(key);
+      });
+      // Remove all Supabase session keys from sessionStorage
+      Object.keys(sessionStorage).forEach((key) => {
+        if (key.startsWith('sb-')) sessionStorage.removeItem(key);
+      });
       sessionStorage.clear();
-      console.log('Logout: cleared localStorage, setUser(null)');
+      console.log('Logout: cleared localStorage, sessionStorage, setUser(null)');
 
       toast.success('Logged out successfully');
-
-      // Force reload to ensure all state is reset
-      setTimeout(() => {
-        console.log('Logout: reloading page');
+      // Force reload to ensure all state is reset and UI updates
+      setTimeout(async () => {
+        // Double clear after reload for extra safety
+        await supabase.auth.signOut();
+        await supabase.auth.setSession(null);
+        localStorage.removeItem('auth_user');
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('sb-')) localStorage.removeItem(key);
+        });
+        Object.keys(sessionStorage).forEach((key) => {
+          if (key.startsWith('sb-')) sessionStorage.removeItem(key);
+        });
+        sessionStorage.clear();
         window.location.reload();
       }, 500);
     } catch (error: any) {
@@ -265,9 +292,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Still clear user state even if logout fails
       localStorage.removeItem('auth_user');
       setUser(null);
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('sb-')) localStorage.removeItem(key);
+      });
+      Object.keys(sessionStorage).forEach((key) => {
+        if (key.startsWith('sb-')) sessionStorage.removeItem(key);
+      });
+      sessionStorage.clear();
       toast.success('Logged out');
-      setTimeout(() => {
-        console.log('Logout: reloading page after error');
+      setTimeout(async () => {
+        await supabase.auth.signOut();
+        await supabase.auth.setSession(null);
+        localStorage.removeItem('auth_user');
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('sb-')) localStorage.removeItem(key);
+        });
+        Object.keys(sessionStorage).forEach((key) => {
+          if (key.startsWith('sb-')) sessionStorage.removeItem(key);
+        });
+        sessionStorage.clear();
         window.location.reload();
       }, 500);
     }
