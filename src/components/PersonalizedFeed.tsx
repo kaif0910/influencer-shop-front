@@ -4,13 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Heart, ShoppingBag, TrendingUp, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getUserData } from "@/utils/localStorage";
+import { useAuth } from "@/hooks/useAuth";
 
 // Utility function to match recommendations by profile
-function getPersonalizedRecommendations(user) {
-  // Example: return products by skinTone, height, style, etc.
-  if (!user?.measurements) return { influencers: [], products: [] };
-  const { skinTone, height } = user.measurements;
+function getPersonalizedRecommendations(user?: {
+  color_season?: string | null;
+  body_type?: string | null;
+  style_preference?: string | null;
+}) {
+  // Prefer color_season as skin tone proxy; height not tracked in AuthUser yet
+  const skinTone = user?.color_season ?? "all";
+  const height: number | undefined = undefined;
 
   // This could be dynamic: here we filter by example skin tone and mock logic
   const influencers = [
@@ -75,30 +79,28 @@ function getPersonalizedRecommendations(user) {
   ];
 
   // Personalized filter (very simplified for demo)
-  const matchedProducts = products.filter(
-    (p) =>
-      (!p.skinTones || p.skinTones.includes(skinTone) || p.skinTones.includes("all")) &&
-      (!p.recommendedHeights ||
-        p.recommendedHeights.length === 0 ||
-        (height && p.recommendedHeights.some((h) => Math.abs(Number(height) - h) < 8)))
-  );
+  const matchedProducts = products.filter((p) => {
+    const toneOk = !p.skinTones || p.skinTones.includes(skinTone) || p.skinTones.includes("all");
+    const heightOk =
+      !p.recommendedHeights || p.recommendedHeights.length === 0 ||
+      (typeof height === "number" && p.recommendedHeights.some((h) => Math.abs(height - h) < 8));
+    return toneOk && heightOk;
+  });
 
   return { influencers, products: matchedProducts };
 }
 
 const PersonalizedFeed = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
   const [showProfileHint, setShowProfileHint] = useState(false);
 
   useEffect(() => {
-    const userData = getUserData();
-    setUser(userData);
-    // If no measurements, we show a friendly hint to complete profile
-    if (!userData?.measurements?.height || !userData?.measurements?.skinTone) {
+    // If key profile fields missing, show a friendly hint to complete profile
+    if (!user?.color_season || !user?.body_type) {
       setShowProfileHint(true);
     }
-  }, []);
+  }, [user]);
 
   // Personalized recommendations using user measurements
   const { influencers: recommendedInfluencers, products: recommendedProducts } =
@@ -120,6 +122,7 @@ const PersonalizedFeed = () => {
     timeAgo: "4h"
   }];
   
+  const hasFollowData = false; // TODO: wire to actual follow data when available
   return (
     <div className="space-y-8">
       {showProfileHint && (
@@ -139,7 +142,8 @@ const PersonalizedFeed = () => {
         </TabsList>
 
         <TabsContent value="feed" className="space-y-6">
-          {user?.followedInfluencers?.length > 0 ? <div>
+          {/* If/when follow data is available, replace this flag */}
+          {hasFollowData ? <div>
               <h3 className="text-xl font-semibold mb-4">Latest from your followed creators</h3>
               <div className="space-y-4">
                 {followedPosts.map(post => <Card key={post.id}>

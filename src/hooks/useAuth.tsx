@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import React, { useState, useEffect, createContext, useContext, ReactNode, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
@@ -42,6 +42,7 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -53,6 +54,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const loginPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const isAuthenticated = !!user;
 
@@ -86,11 +88,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if (event === 'SIGNED_OUT') {
         localStorage.removeItem('auth_user');
         setUser(null);
+        setIsLoading(false);
       } else if (event === 'TOKEN_REFRESHED' && session?.access_token) {
         await fetchUserProfile(session.access_token);
-      }
-      if (sessionChecked) {
-        setIsLoading(false);
       }
     });
     return () => subscription.unsubscribe();
@@ -103,7 +103,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const authUser = userResponse && userResponse.data && userResponse.data.user ? userResponse.data.user : null;
       console.log('fetchUserProfile: authUser', authUser);
       if (authUser) {
-        let { data: profile, error } = await supabase
+        const { data: profile, error } = await supabase
           .from('users')
           .select('*')
           .eq('id', authUser.id)
@@ -111,41 +111,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log('fetchUserProfile: profile', profile, 'error', error);
         if (error || !profile) {
           // If not found, create the user profile
-          const { data: newProfile, error: insertError } = await supabase
+          const insertRes = await supabase
             .from('users')
-            .insert([
-              {
-                id: authUser.id,
-                name: authUser.user_metadata?.name || authUser.email,
-                email: authUser.email,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                // add other default fields as needed
-              }
-            ])
+            .insert({
+              id: authUser.id,
+              name: authUser.user_metadata?.name || authUser.email,
+              email: authUser.email,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              // add other default fields as needed
+            })
             .select()
             .single();
-          if (insertError || !newProfile) {
-            toast.error('Failed to create user profile');
-            setUser(null);
-            return;
-          } else {
-            localStorage.setItem('auth_user', JSON.stringify(newProfile));
-            setUser(newProfile);
-            return;
-          }
+          const newProfile = insertRes.data;
+          const insertError = insertRes.error;
+           if (insertError || !newProfile) {
+             console.warn('Failed to create user profile');
+             // do not clear existing user state here
+             return;
+           } else {
+             localStorage.setItem('auth_user', JSON.stringify(newProfile));
+             setUser(newProfile);
+           }
         } else {
           localStorage.setItem('auth_user', JSON.stringify(profile));
           setUser(profile);
         }
       } else {
-        toast.error('No Supabase user found');
-        setUser(null);
+        console.warn('No Supabase user found during profile fetch');
+        // do not clear existing user state here
       }
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
-      toast.error('Failed to fetch user profile');
-      setUser(null);
+      // do not clear existing user state here
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -175,9 +175,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       toast.success('Account created successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Registration error:', error);
-      toast.error(error.message || 'Registration failed');
+      const message = error instanceof Error ? error.message : 'Registration failed';
+      toast.error(message);
       throw error;
     } finally {
       setIsLoading(false);
@@ -185,58 +186,56 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    try {
-      setIsLoading(true);
-
-      // Use backend API for login
-      const response = await apiClient.login({ email, password });
-      console.log('Login response:', response);
-
-      if (!response || (!response.user && !response.session)) {
-        toast.error('Login failed: No user or session returned');
-        setUser(null);
-        localStorage.removeItem('auth_user');
-        setIsLoading(false);
-        return false;
-      }
-
-      // Try to set the session in Supabase client if available
-      let profileFetched = false;
-      if (response.session) {
-        try {
-          const { error: sessionError } = await supabase.auth.setSession(response.session);
-          if (sessionError) {
-            console.warn('Session setting failed, but continuing with manual auth:', sessionError);
-          }
-          // Always fetch user profile from Supabase after setting session
-          if (response.session.access_token) {
-            await fetchUserProfile(response.session.access_token);
-            profileFetched = true;
-          }
-        } catch (sessionError) {
-          console.warn('Session setting failed, but continuing with manual auth:', sessionError);
-        }
-      }
-
-      if (profileFetched && user) {
-        toast.success('Logged in successfully!');
-        setIsLoading(false);
-        return true;
-      } else {
-        toast.error('Login failed: Could not fetch user profile');
-        setUser(null);
-        localStorage.removeItem('auth_user');
-        setIsLoading(false);
-        return false;
-      }
-    } catch (error: any) {
-      console.error('Login error:', error);
-      toast.error(error.message || 'Login failed');
-      setUser(null);
-      localStorage.removeItem('auth_user');
-      setIsLoading(false);
-      return false;
+    if (loginPromiseRef.current) {
+      return loginPromiseRef.current;
     }
+    setIsLoading(true);
+
+    const promise = (async () => {
+      try {
+        const response = await apiClient.login({ email, password });
+        console.log('Login response:', response);
+
+        // Treat backend user as success and set immediately
+        if (response?.user) {
+          localStorage.setItem('auth_user', JSON.stringify(response.user));
+          setUser(response.user);
+        } else {
+          toast.error('Login failed: No user returned');
+          setUser(null);
+          localStorage.removeItem('auth_user');
+          return false;
+        }
+
+        // Best-effort: if Supabase session exists, refresh profile in background
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData?.session?.access_token;
+          if (token) {
+            fetchUserProfile(token).catch((e) => console.warn('fetchUserProfile failed after login:', e));
+          }
+        } catch (e) {
+          console.warn('getSession failed after login:', e);
+        }
+
+        toast.success('Logged in successfully!');
+        return true;
+      } catch (error: unknown) {
+        console.error('Login error:', error);
+        const message = error instanceof Error ? error.message : 'Login failed';
+        toast.error(message);
+        setUser(null);
+        localStorage.removeItem('auth_user');
+        return false;
+      } finally {
+        setIsLoading(false);
+        loginPromiseRef.current = null;
+        console.log('[Auth] setIsLoading(false) called in login.finally');
+      }
+    })();
+
+    loginPromiseRef.current = promise;
+    return promise;
   };
 
   const logout = async () => {
@@ -248,8 +247,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         signOutResult = await supabase.auth.signOut();
         // Force clear Supabase session in-memory as well
         await supabase.auth.setSession(null);
-        if (signOutResult && signOutResult.error) {
-          console.warn('Supabase logout failed:', signOutResult.error);
+        const maybeError = (signOutResult as { error?: unknown } | null)?.error;
+        if (maybeError) {
+          console.warn('Supabase logout failed:', maybeError);
         } else {
           console.log('Supabase signOut succeeded');
         }
@@ -287,7 +287,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         sessionStorage.clear();
         window.location.reload();
       }, 500);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Logout error:', error);
       // Still clear user state even if logout fails
       localStorage.removeItem('auth_user');
@@ -339,9 +339,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem('auth_user', JSON.stringify(updatedProfile));
       setUser(updatedProfile);
       toast.success('Profile updated successfully!');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Update error:', error);
-      toast.error(error.message || 'Update failed');
+      const message = error instanceof Error ? error.message : 'Update failed';
+      toast.error(message);
       throw error;
     }
   };

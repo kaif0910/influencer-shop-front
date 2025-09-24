@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
-// TEMPORARY WORKAROUND: cast supabase to any to suppress type errors
-const supabaseAny = supabase as any;
+import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
+
+const sb = supabase as unknown as SupabaseClient;
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002/api';
 
@@ -32,30 +33,45 @@ export interface WishlistItem {
 }
 
 class ApiClient {
-  private async _fetch(endpoint: string, options: RequestInit = {}) {
+  private async _fetch(endpoint: string, options: RequestInit = {}, timeoutMs = 20000) {
     try {
       const url = `${API_BASE_URL}${endpoint}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
       const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
           ...options.headers,
         },
+        signal: controller.signal,
         ...options,
       });
 
+      clearTimeout(timer);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        throw new Error((errorData as { error?: string }).error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       return response.json();
-    } catch (error) {
+    } catch (error: unknown) {
+      if ((error as { name?: string } | null)?.name === 'AbortError') {
+        throw new Error('Request timed out. Please try again.');
+      }
       console.error('API request failed:', error);
       throw error;
     }
   }
 
   // Auth endpoints
+  private isAuthWithTokens(data: unknown): data is { access_token: string; refresh_token: string } {
+    if (!data || typeof data !== 'object') return false;
+    const d = data as Record<string, unknown>;
+    return typeof d['access_token'] === 'string' && typeof d['refresh_token'] === 'string';
+  }
+
   async register(userData: {
     name: string;
     email: string;
@@ -84,8 +100,8 @@ class ApiClient {
       });
 
       // Set Supabase session after backend login
-      if (response && response.access_token && response.refresh_token) {
-        await supabaseAny.auth.setSession({
+      if (this.isAuthWithTokens(response)) {
+        await sb.auth.setSession({
           access_token: response.access_token,
           refresh_token: response.refresh_token,
         });
@@ -98,15 +114,15 @@ class ApiClient {
     }
   }
 
-  async getCurrentUser(token?: string) {
-    const { data: { user }, error } = await supabaseAny.auth.getUser();
+  async getCurrentUser() {
+    const { data: { user }, error } = await sb.auth.getUser();
     if (error) throw error;
     return { user };
   }
 
   // Posts endpoints
   async getPosts(params?: { page?: number; limit?: number; category?: string; influencer_id?: string }) {
-    let query = supabaseAny
+    let query = sb
       .from('posts')
       .select(`
         *,
@@ -135,13 +151,13 @@ class ApiClient {
       pagination: {
         page: params?.page || 1,
         limit: params?.limit || 20,
-        hasMore: data?.length === (params?.limit || 20)
+        hasMore: (data?.length || 0) === (params?.limit || 20)
       }
     };
   }
 
   async getPost(id: string) {
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('posts')
       .select(`
         *,
@@ -165,9 +181,9 @@ class ApiClient {
     media_urls: string[];
     type: 'image' | 'video';
   }) {
-    const { data: { user } } = await supabaseAny.auth.getUser();
+    const { data: { user } } = await sb.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('posts')
       .insert([{
         ...postData,
@@ -187,10 +203,10 @@ class ApiClient {
   }
 
   async getMyPosts(params?: { page?: number; limit?: number }) {
-    const { data: { user } } = await supabaseAny.auth.getUser();
+    const { data: { user } } = await sb.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    let query = supabaseAny
+    let query = sb
       .from('posts')
       .select('*')
       .eq('author_id', user.id)
@@ -210,13 +226,13 @@ class ApiClient {
       pagination: {
         page: params?.page || 1,
         limit: params?.limit || 20,
-        hasMore: data?.length === (params?.limit || 20)
+        hasMore: (data?.length || 0) === (params?.limit || 20)
       }
     };
   }
 
   async updatePost(id: string, postData: Partial<Post>) {
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('posts')
       .update({
         ...postData,
@@ -231,7 +247,7 @@ class ApiClient {
   }
 
   async deletePost(id: string) {
-    const { error } = await supabaseAny
+    const { error } = await sb
       .from('posts')
       .delete()
       .eq('id', id);
@@ -242,7 +258,7 @@ class ApiClient {
 
   // Wishlist endpoints
   async getWishlist() {
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('wishlist_items')
       .select(`
         *,
@@ -260,8 +276,8 @@ class ApiClient {
   }
 
   async addToWishlist(postId: string) {
-    const userResult = await supabaseAny.auth.getUser();
-    const { data, error } = await supabaseAny
+    await sb.auth.getUser();
+    const { data, error } = await sb
       .from('wishlist_items')
       .insert([{ post_id: postId }])
       .select(`
@@ -279,7 +295,7 @@ class ApiClient {
   }
 
   async removeFromWishlist(postId: string) {
-    const { error } = await supabaseAny
+    const { error } = await sb
       .from('wishlist_items')
       .delete()
       .eq('post_id', postId);
@@ -289,19 +305,19 @@ class ApiClient {
   }
 
   async checkWishlist(postId: string) {
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('wishlist_items')
       .select('id')
       .eq('post_id', postId)
       .single();
 
-    if (error && error.code !== 'PGRST116') throw error;
+    if (error && (error as PostgrestError).code !== 'PGRST116') throw error;
     return { isInWishlist: !!data };
   }
 
   // Users endpoints
   async getUsers() {
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('users')
       .select('id, name, email, avatar_url, category, is_influencer')
       .eq('is_influencer', true);
@@ -311,7 +327,7 @@ class ApiClient {
   }
 
   async getUser(id: string) {
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('users')
       .select('*')
       .eq('id', id)
@@ -319,18 +335,19 @@ class ApiClient {
 
     if (error) {
       // Include Supabase error details for easier debugging
-      const errorMsg = error.message || error.description || JSON.stringify(error);
+      const e = error as PostgrestError;
+      const errorMsg = e.message || e.details || e.hint || JSON.stringify(error);
       throw new Error(`Supabase update error: ${errorMsg}`);
     }
     return { user: data };
   }
 
-  async updateUser(_id: string, userData: any) {
+  async updateUser(_id: string, userData: Record<string, unknown>) {
     // Always use the current authenticated user's ID
-    const { data: { user }, error: userError } = await supabaseAny.auth.getUser();
+    const { data: { user }, error: userError } = await sb.auth.getUser();
     if (userError) throw userError;
     if (!user) throw new Error('Not authenticated');
-    const { data, error } = await supabaseAny
+    const { data, error } = await sb
       .from('users')
       .update({
         ...userData,

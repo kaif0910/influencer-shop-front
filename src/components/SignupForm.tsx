@@ -27,7 +27,6 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 const SignupForm = ({ onSuccess }: { onSuccess?: () => void }) => {
-  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { register } = useAuth();
@@ -46,25 +45,16 @@ const SignupForm = ({ onSuccess }: { onSuccess?: () => void }) => {
   });
   
   const handleSubmit = async (data: FormData) => {
-    setIsLoading(true);
-    
-    try {
-      await register({
-        name: data.fullName,
-        email: data.email,
-        password: data.password,
-        phone: data.phoneNumber,
-        gender: data.gender,
-      });
-      
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (error) {
-      // Error is already handled in the register function
-    } finally {
-      setIsLoading(false);
-    }
+    await register({
+      name: data.fullName,
+      email: data.email,
+      password: data.password,
+      phone: data.phoneNumber,
+      gender: data.gender,
+    });
+    // If register throws, RHF will still end isSubmitting; errors are toasted inside register
+    form.reset();
+    onSuccess?.();
   };
 
   const togglePasswordVisibility = () => {
@@ -234,8 +224,8 @@ const SignupForm = ({ onSuccess }: { onSuccess?: () => void }) => {
           )}
         />
         
-        <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading ? "Creating Account..." : "Create Account"}
+        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? "Creating Account..." : "Create Account"}
         </Button>
       </form>
     </Form>
